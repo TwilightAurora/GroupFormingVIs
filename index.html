@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<head>
+<title>Group Forming Vis</title>
+<style>
+
+body {
+    background-color: #FFF;
+}
+
+strong {
+    font-family: 'Helvetica';
+    line-height: 150%;
+}
+text {
+    font-family: 'Georgia';
+    line-height: 150%;
+}
+circle {
+  stroke-width: 1px;
+  stroke: #000;
+}
+line {
+  stroke: #999;
+  opacity: 0.1;
+}
+.level-lines {
+    opacity: 0.5;
+    stroke: #33F;
+}
+.axis-lines {
+    opacity: 0.5;
+    stroke: #33F;
+}
+.d3-tip {
+  line-height: 1;
+  font-weight: bold;
+  padding: 12px;
+  background: rgba(255, 255, 0, 0.1);
+  color: #111;
+  border-radius: 2px;
+}
+
+/* Creates a small triangle extender for the tooltip */
+.d3-tip:after {
+  box-sizing: border-box;
+  display: inline;
+  font-size: 10px;
+  width: 100%;
+  line-height: 1;
+  color: rgba(0, 0, 0, 0.2);
+  position: absolute;
+  text-align: center;
+}
+
+#group {
+    float: left;
+    width: 15%;
+    height: 800px;
+    margin: 0;
+    padding: 1em;
+    border: 1px solid gray;
+}
+
+#indi {
+    float: left;
+    width: 15%;
+    
+    height: 800px;
+    margin: 0;
+    padding: 1em;
+    border: 1px solid gray;
+}
+
+#FD {
+    float: left;
+    padding: 1em;
+    width: 60%;
+    height: 800px;
+    overflow: hidden;
+    border: 1px solid gray;
+}
+
+#FT {
+    position: absolute;
+    left: 85%;
+    border: 0px;
+    padding: 1em;
+    height: 800px;
+    overflow: hidden;
+}
+
+.indiInfo {
+    max-height: 200px;
+    overflow: auto;
+}
+
+.selected {
+    stroke: #F22;
+    stroke-width: 5px;
+    stroke-dasharray: 5;
+}
+
+.choice {
+    stroke: #f66;
+    stroke-width: 3px;
+}
+
+.filtered {
+    fill: #333;
+}
+
+.grouped {
+    fill-opacity: 0.1;
+}
+
+</style>
+</head>
+
+<body>
+    <script src="jquery-3.1.1.min.js"></script>
+    <script src="d3.min.js"></script>
+    <script src="d3-tip.js"></script>
+    <script src="radar.js"></script>
+    <div id='group'>
+        
+        <div ><strong>Group: </strong></div>
+        <br/>
+        <div id='groupFD'></div>
+        <br/>
+        <div ><strong>Members: </strong><text id='groupNo'></text></div>
+        <br/>
+        <div><ul id='groupList'></ul></div>
+        
+
+    </div>
+    <div id='indi'>
+        <div ><strong>Alias: </strong><text id='indiName'>name</text></div>
+        <br/>
+        <div id='indiFD'></div>
+        
+        <center><button id="indiBtn" type='button' onclick="addToGroup()">Add to Group</button></center>
+        <br/>
+        <div class='indiInfo'><strong>Interest:</strong><br/><text id='indiInt'>int</text></div>
+        <br/>
+        <div class='indiInfo'><strong>Expectation:</strong><br/><text id='indiExp'>exp</text></div>
+
+    </div>
+    <div id="FD"></div>
+    <div id="FT" >
+        <strong>Skill Filter</strong>
+        <br/>
+        <br/>
+        <select id="filter" onchange="filterChange()"></select>
+    </div>
+    
+
+    <script>
+
+
+        var TH = 6,
+            width = 960,
+            height = 800;
+        var indiSelect;
+        var table=new Array(75);        for (i=0;i<75;i++) {table[i]=new Array(75); for (j=0;j<75;j++) table[i][j]=0;}
+        var aliases=new Array(75);
+        var grouped=[];
+        var tip = d3.tip()
+            .attr('class', 'd3-tip')
+            .offset([0,50])
+            .html(function(d) {
+                //a=d["Please, tell me about yourself. What interest you? Do you have any hobbies?"];
+                //b=d["What do you expect to learn in Information Visualization? How do expect to use what you learn?"];
+                return d.Alias+'<div id="RD"></div>'; });
+        var svgFD = d3.select("#FD").append("svg")
+                    .attr("width",width)
+                    .attr("height",height);
+        svgFD.call(tip); 
+        d3.select("ul").call(tip);
+        skills=["Art","Graphics","HCI","IVIS","Math","Prog","Stats","UX","User"];
+        d3.select("#filter").append("option").attr("value","None").html("None");
+        for (i in skills){
+            d3.select("#filter").append("option").attr("value",skills[i]).html(skills[i]);
+        }
+        d3.csv("data.csv",function(data){
+            
+            nodeData=data.slice(0,74);
+            links=[];
+            for(i=0;i<nodeData.length;i++){
+                aliases[nodeData[i].Alias]=i;
+                for(j=i+1;j<nodeData.length;j++){
+                    count=0;
+                    for(x in skills){
+                        
+                        if (parseInt(nodeData[i][skills[x]])>TH && parseInt(nodeData[j][skills[x]])>TH){
+                            count+=1;
+                        }
+                    }
+                    if(count==0){
+                        links.push({"source":nodeData[i].Alias,"target":nodeData[j].Alias,"value":count});
+                        links.push({"source":nodeData[j].Alias,"target":nodeData[i].Alias,"value":count});
+                        table[i][j]=1;
+                        table[j][i]=1;
+                    }
+                }
+            }
+            //console.log(nodeData);
+            //console.log(links);
+            
+            var color = d3.scaleOrdinal(d3.schemeCategory20b);
+            var simulation = d3.forceSimulation(nodeData)
+                                .force("link",d3.forceLink().id(function(d){return d.Alias}))
+                                .force("charge",d3.forceManyBody())
+                                .force("center",d3.forceCenter(width/2,height/2));
+                                           
+            var link = svgFD.append("g")
+                            .attr("class","links")
+                            .selectAll("line")
+                            .data(links)
+                            .enter().append("line");
+            var node = svgFD.append("g")
+                            .attr("class","nodes")
+                            .selectAll("circle")
+                            .data(nodeData)
+                            .enter().append("circle")
+                            .attr("r",7)
+                            .attr("id",function(d){return 'c'+d.Alias})
+                            .attr("fill",function(d){return color(d.Alias)})
+                            .on('mouseover', function(d){
+                                d3.select(this).transition().delay(50).attr("r",14);
+                                tip.show(d);
+                                drawRadar("#RD",[d],200,200);
+                                })
+                            .on('mouseout', function(d){
+                                temp=d3.select(this);
+                                if(temp.classed("selected")){
+                                    temp.transition().delay(50).attr("r",14);
+                                }else{
+                                    temp.transition().delay(50).attr("r",7);
+                                }
+                                tip.hide(d);})
+                            .on('click',function(d){
+                                indiSelect=d;
+                                refreshIndi();
+                            })
+                            .call(d3.drag()
+                                .on("start", dragstarted)
+                                .on("drag", dragged)
+                                .on("end", dragended));
+            simulation.nodes(nodeData)
+                    .on("tick",ticked);
+            simulation.force("link").links(links);
+            simulation.force("charge").strength(-1000);
+
+            function ticked(){
+                link.attr("x1", function(d) {return d.source.x;})
+                    .attr("y1", function(d) {return d.source.y;})
+                    .attr("x2", function(d) {return d.target.x;})
+                    .attr("y2", function(d) {return d.target.y;});
+                node.attr("cx", function(d) {return d.x;})
+                    .attr("cy", function(d) {return d.y;})
+            }
+            function dragstarted(d) {
+            if (!d3.event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+            }
+
+            function dragged(d) {
+            d.fx = d3.event.x;
+            d.fy = d3.event.y;
+            }
+
+            function dragended(d) {
+            if (!d3.event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+            }
+
+            indiSelect=nodeData[0];
+            refreshIndi();
+            refreshGroup();
+        });
+        function refreshIndi(){
+            s=indiSelect;
+            d3.selectAll(".nodes circle").classed("selected",false).classed("choice",false).attr("r",7);
+            d3.select("#c"+s.Alias).classed("selected",true).attr("r",12);
+            d3.select("#indiName").html(s.Alias);
+            d3.select("#indiExp").html(s['What do you expect to learn in Information Visualization? How do expect to use what you learn?']);
+            d3.select("#indiInt").html(s['Please, tell me about yourself. What interest you? Do you have any hobbies?']);
+            for(i=0;i<nodeData.length;i++){
+                if(table[aliases[s.Alias]][i]==1){
+                    d3.select("#c"+nodeData[i].Alias).classed("choice",true);
+                }
+            }
+            drawRadar('#indiFD',[indiSelect],w=225,h=200);
+            refreshBtn();
+        }        
+        function drawRadar(id,data,w=300,h=300){
+            var d=[];
+            for (item in data){
+                var temp=[];
+                for (s in skills){
+                    temp.push({axis:skills[s],value:data[item][skills[s]]});
+                }
+                d.push(temp);
+            }
+            config={maxValue:10,showLegend:false,w:w,h:h,showLevelsLabels:false};
+            RadarChart.draw(id,d,skills,config);
+        }        
+        function filterChange(){
+            t=$("#filter :selected").text();
+            for (i in nodeData){
+                d3.select("#c"+nodeData[i].Alias).classed("filtered",false);
+            }
+            if (t!='None'){
+                for (i in nodeData){
+                    if(nodeData[i][t]<=TH){
+                        d3.select("#c"+nodeData[i].Alias).classed("filtered",true);
+                    }   
+                }
+            }
+        }
+        function refreshBtn(){
+            if (grouped.indexOf(indiSelect)>-1){
+                $("#indiBtn").html("Remove from Group");
+            }else{
+                $("#indiBtn").html("Add to Group");
+            }
+        }
+        function addToGroup(){
+            var id=grouped.indexOf(indiSelect);
+            if  (id<0){
+                grouped.push(indiSelect);
+                refreshGroup();
+            } else{
+                grouped.splice(id,1);
+                refreshGroup();
+            }
+            refreshBtn();
+        }
+        function refreshGroup(){
+            for(i in nodeData){
+                d3.select("#c"+nodeData[i].Alias).classed("grouped",false);
+            }
+            for(i in grouped){
+                d3.select("#c"+grouped[i].Alias).classed("grouped",true);
+            }
+            drawRadar('#groupFD',grouped,w=225,h=200);
+            $("#groupNo").text(""+grouped.length);
+            $("#groupList").empty();
+            d3.select("#groupList").selectAll("li").data(grouped).enter().append("li").text(function(d){return d.Alias});
+        }
+    </script>
+</body>
